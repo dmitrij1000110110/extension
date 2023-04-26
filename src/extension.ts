@@ -1,138 +1,181 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
+import { Server } from 'http';
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { spawn } from 'node:child_process';
 
+const { spawn } = require('node:child_process');
+const runJava = spawn('java', ['-cp', 'extension1/src', 'caches.SaveChanges', 'Java started']);
+const oldFiles = new Map<String, String>();
+const newFiles = new Map<String, String>();
 
-const runJava = spawn('java', ['-jar',
-	"--add-opens", "java.base/java.nio=ALL-UNNAMED",
-	"--add-opens", "java.base/sun.nio.ch=ALL-UNNAMED",
-	"--enable-preview",
-	'/home/alex/Programming/caches/extension/src/persistent-ide-caches.jar',
-	vscode.workspace.workspaceFolders?.at(0)?.uri.path.toString() ?? "error",
-]);
-const oldFiles = new Map<string, string>();
-const newFiles = new Map<string, string>();
-
-// runJava.stdout.on('data', (data: string) => {
-// 	console.log(`stdout: ${data}`);
-
-// });
-
-runJava.stderr.on('data', (data: string) => {
-	console.error(`stderr: ${data}`);
-});
-
-runJava.on('close', (code: Number) => {
-	console.log(`child process exited with code ${code}`);
-});
-
-function pushEvents(events: object) {
-	console.log(JSON.stringify(events));
-
-	runJava.stdin.write("changes\n" + JSON.stringify(events));
+function writeStringToJava(str: String) {
+	runJava.stdin.write(str + '\r\n');
 }
 
+function pushEvents(events: object) {
+	console.log('changes');
+	console.log(JSON.stringify(events));
 
-function getWebviewContent(req: string, text: string) {
+	runJava.stdin.write(JSON.stringify(events) + '\r\n');
+
+	runJava.stdout.on('data', (data: String) => {
+		console.log(`stdout: ${data}`);
+
+	});
+
+	runJava.stderr.on('data', (data: String) => {
+		console.error(`stderr: ${data}`);
+	});
+
+	runJava.on('close', (code: Number) => {
+		console.log(`child process exited with code ${code}`);
+	});
+
+}
+
+function getWebviewContent() {
 	return `<html>
 	<head>
-		<title>Alert Box</title>
-		<script type="text/javascript">
-		const vscode = acquireVsCodeApi();
-			function onClick() {
-				const text = document.getElementById('search').value;
-				vscode.postMessage({
-					command: 'search',
-					text: text
-				});
-			}
+	<title>Alert Box</title>
+	<script type="text/javascript">
+	const vscode = acquireVsCodeApi();
+	function onClick() {
+		const text = document.getElementById('search').value;
+		vscode.postMessage({
+			command: 'search',
+			text: text
+		});
+		}
+		function onCheckout() {
+			const hash = document.getElementById('hash').value;
+			vscode.postMessage({
+				command: 'checkout',
+				text: hash
+			});
+		}
+		function onCamelCaseSearch() {
+			const text = document.getElementById('camel-case-search').value;
+			vscode.postMessage({
+				command: 'ccsearch',
+				text: text
+			});
+		}
 		</script>
 	</head>
 	<body>
-	<input type="text" id="search" style="font-size:50px"/><br />
-	<input type="button" value="Search" onclick="onClick()" style="font-size:50px" />
-	</body>
-	<body>
-	<p style="font-size:50px">${req}</p>
-	<p style="font-size:50px">${text}</p>
+	<input type="text" id="search" />
+	<input type="button" value="Search" onclick="onClick()" />
+	<br />
+	<input type="text" id="hash" />
+	<input type="button" value="Checkout" onclick="onCheckout()">
+	<br />
+	<input type="text" id="camel-case-search">
+	<input type="button" value="Camel case search" onclick="onCamelCaseSearch()">
 	</body>
 	</html>
 	`;
-}
+  }
 
+let findWidgetActive = false;
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 
 	const panel = vscode.window.createWebviewPanel(
-		'search', // Identifies the type of the webview. Used internally
-		'Search', // Title of the panel displayed to the user
-		vscode.ViewColumn.Two, // Editor column to show the new webview panel in.
-		{ enableScripts: true } // Webview options. More on these later.
+        'search', // Identifies the type of the webview. Used internally
+        'Search', // Title of the panel displayed to the user
+        vscode.ViewColumn.Two, // Editor column to show the new webview panel in.
+        { enableScripts: true } // Webview options. More on these later.
+		
+      );
 
-	);
-
-	panel.webview.html = getWebviewContent("", "");
+	panel.webview.html = getWebviewContent();  
 
 	panel.webview.onDidReceiveMessage(message => {
-		switch (message.command) {
-			case 'search':
-				runJava.stdout.once('data', (data: string) =>
-					panel.webview.html = getWebviewContent("Results for \"" + message.text + "\"", data.slice(1, -2)));
-				runJava.stdin.write("search\n" + message.text);
-				return;
+	  switch (message.command) {
+		case 'search':
+		  console.log('search');
+		  console.log(message.text);
+		  writeStringToJava('search');
+		  writeStringToJava(message.text);
+		  vscode.window.showErrorMessage(message.text);
+		  return;
+		case 'checkout':
+			console.log('checkout');
+			console.log(message.text);
+			writeStringToJava('checkout');
+			writeStringToJava(message.text);
+			vscode.window.showErrorMessage(message.text);
+			return;
+		case 'ccsearch':
+			console.log('ccsearch');
+			console.log(message.text);
+			writeStringToJava('ccsearch');
+			writeStringToJava(message.text);
+			vscode.window.showErrorMessage(message.text);
 		}
-	},
-		undefined,
-		context.subscriptions
-	);
+	  },
+	  undefined,
+	  context.subscriptions
+    );
+
+	// Use the console to output diagnostic information (console.log) and errors (console.error)
+	// This line of code will only be executed once when your extension is activated
+	console.log('Congratulations, your extension "extension1" is now active!');
 
 	const workspace = vscode.workspace;
 	console.log(workspace);
 
+	vscode.commands.registerCommand('editor.action.nextMatchFindAction', (e) => {
+		console.log(e);
+	});
+
+	vscode.commands.registerCommand('type', (args) => {
+		if (findWidgetActive) {
+			console.log(args);
+		} else {
+			vscode.commands.executeCommand('default:type', args);
+		}
+	});
+
+
 	if (workspace !== undefined) {
 
-		let modifyChanges: { uri: String, oldText: String | undefined, newText: String }[] = [];
-		let addChanges: { uri: string, text: string }[] = [];
-		let deleteChanges: { uri: string, text: string | undefined }[] = [];
-		let renameChanges: { newUri: string, oldUri: string }[] = [];
+		let modifyChanges: String[] = [];
+		let addChanges: String[] = [];
+		let deleteChanges: String[] = [];
+		let renameChanges: String[] = [];
 
 		let intervalId = setInterval(() => {
-			modifyChanges.length = 0;
-			addChanges.length = 0;
-			deleteChanges.length = 0;
-			renameChanges.length = 0;
-			newFiles.forEach((value: string, key: string) => {
-				modifyChanges.push({ uri: key, oldText: oldFiles.get(key), newText: value });
+			newFiles.forEach((key: String, value: String) => {
+				modifyChanges.push(JSON.stringify({uri: key, oldText: oldFiles.get(key), newText: value}));
 			});
+			const events = {timestamp: Date.now(), modifyChanges: modifyChanges, addChanges: addChanges, deleteChanges: deleteChanges, renameChanges: renameChanges};
+			pushEvents(events);
 			newFiles.clear();
-			const events = { timestamp: Date.now(), modifyChanges: modifyChanges, addChanges: addChanges, deleteChanges: deleteChanges, renameChanges: renameChanges };
-			console.log
-			if (events.modifyChanges.length > 0) {
-				pushEvents(events);
-			}
-
+			modifyChanges = [];
+			addChanges = [];
+			deleteChanges = [];
+			renameChanges = [];
 		}, 5000);
 
 		workspace.onDidCreateFiles(event => {
 			console.log("create files");
 			event.files.forEach(file => {
-				addChanges.push({ uri: file.path, text: fs.readFileSync(file.path).toString() });
-			}); 123
+				addChanges.push(JSON.stringify({timestamp: Date.now(), uri: file.path, text: fs.readFileSync(file.path)}));
+			});
 		});
-
 		workspace.onDidDeleteFiles(event => {
 			console.log("delete files");
 			event.files.forEach(file => {
-				deleteChanges.push({ uri: file.path, text: oldFiles.get(file.path) });
+				deleteChanges.push(JSON.stringify({timestamp: Date.now(), uri: file.path}));
 			});
 		});
 		workspace.onDidChangeTextDocument(event => {
 			console.log("modify files");
-			const uri = event.document.uri.path;
+			const uri = event.document.uri.toString();
 			if (!newFiles.has(uri)) {
 				oldFiles.set(uri, event.document.getText());
 			}
@@ -141,22 +184,20 @@ export function activate(context: vscode.ExtensionContext) {
 		workspace.onDidRenameFiles(event => {
 			console.log("rename files");
 			event.files.forEach(file => {
-				renameChanges.push({ oldUri: file.oldUri.path, newUri: file.newUri.path });
+				renameChanges.push(JSON.stringify({timestamp: Date.now(), oldUri: file.oldUri, newUri: file.newUri}));
 			});
 		});
-	};
+		
+	}
 
-}
-
-
-// The command has been defined in the package.json file
-// Now provide the implementation of the command with registerCommand
-// The commandId parameter must match the command field in package.json
-let disposable = vscode.commands.registerCommand('extension1.startSearch', () => {
-	// The code you place here will be executed every time your command is executed
-	// Display a message box to the user
-	vscode.window.showInformationMessage('Hello World from extension1!');
-});
+	// The command has been defined in the package.json file
+	// Now provide the implementation of the command with registerCommand
+	// The commandId parameter must match the command field in package.json
+	let disposable = vscode.commands.registerCommand('extension1.helloWorld', () => {
+		// The code you place here will be executed every time your command is executed
+		// Display a message box to the user
+		vscode.window.showInformationMessage('Hello World from extension1!');
+	});
 
 
 }
